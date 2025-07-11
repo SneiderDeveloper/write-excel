@@ -1,20 +1,31 @@
 const express = require('express')
-const validatorHandler = require('../middleware/validator.handler')
+const jsonToExcel = require('../middleware/jsonToExcel.handle')
+const { uploadFileDirectly } = require('../utils/uploadFileDirectly')
+const { getDownloadUrlForFileDirect } = require('../utils/getDownloadUrlForFileDirect')
 
 const router = express.Router()
-const address = new AddressService
 
 router.post('/',
-    validatorHandler(createAddressSchema, 'body'),
-    async (req, res, next) => {
-        try {
-            const { body } = req
-            const data = await address.create(body)
-            res.json(data)
-        } catch (err) {
-            next(err)
-        }
-    }
+	jsonToExcel(),
+	async (req, res, next) => {
+		try {
+			const { body } = req
+			const filePath = './output.xlsx'
+			const filePathInStorage = 'documents/output.xlsx'
+
+			await uploadFileDirectly(filePath, filePathInStorage)
+
+			try {
+				const downloadUrl = await getDownloadUrlForFileDirect(filePathInStorage);
+				res.json({ message: 'Excel file created successfully', downloadUrl })
+			} catch (error) {
+				console.error('No se pudo generar la URL.');
+			}
+			
+		} catch (err) {
+			next(err)
+		}
+	}
 )
 
 module.exports = router

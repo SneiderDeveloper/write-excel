@@ -1,4 +1,5 @@
 const XLSX = require('xlsx')
+const cheerio = require('cheerio')
 // const XLSX = require('xlsx-style')
 
 function csvToExcel() {
@@ -29,6 +30,28 @@ function csvToExcel() {
                 
                 // Crea worksheet desde JSON
                 worksheet = XLSX.utils.json_to_sheet(jsonData);
+            } else if (fileExtension.endsWith('.html')) {
+                // Para HTML: parsea tablas
+                const htmlString = req.file.buffer.toString('utf8');
+                const $ = cheerio.load(htmlString);
+                
+                // Extrae datos de la primera tabla
+                const tableData = [];
+                $('table').first().find('tr').each((i, row) => {
+                    const rowData = [];
+                    $(row).find('td, th').each((j, cell) => {
+                        rowData.push($(cell).text().trim());
+                    });
+                    if (rowData.length > 0) {
+                        tableData.push(rowData);
+                    }
+                });
+                
+                if (tableData.length === 0) {
+                    return res.status(400).json({ error: 'No table found in HTML' });
+                }
+                
+                worksheet = XLSX.utils.aoa_to_sheet(tableData);
             } else {
                 return res.status(400).json({ error: 'Unsupported file type' });
             }

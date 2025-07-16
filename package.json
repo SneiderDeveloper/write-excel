@@ -12,6 +12,7 @@
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",
     "@google-cloud/storage": "^7.16.0",
+    "cheerio": "^1.1.0",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",

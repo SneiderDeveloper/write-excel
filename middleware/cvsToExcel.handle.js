@@ -1,5 +1,5 @@
-const ExcelJS = require('exceljs');
-const { Readable } = require('stream');
+const ExcelJS = require('exceljs')
+const cheerio = require('cheerio')
 
 const getStyleConfigFromQuery = (query) => {
   const styles = {}
@@ -28,80 +28,284 @@ const getStyleConfigFromQuery = (query) => {
   return styles
 }
 
+// Función para convertir colores CSS a formato ARGB
+const convertColorToArgb = (color) => {
+  if (!color) return 'FF000000'
+  
+  color = color.trim().toLowerCase()
+  
+  if (color.startsWith('#')) {
+    const hex = color.substring(1)
+    if (hex.length === 3) {
+      return 'FF' + hex.split('').map(char => char + char).join('').toUpperCase()
+    }
+    if (hex.length === 6) {
+      return 'FF' + hex.toUpperCase()
+    }
+  }
+  
+  const colorMap = {
+    'red': 'FFFF0000', 'green': 'FF008000', 'blue': 'FF0000FF',
+    'black': 'FF000000', 'white': 'FFFFFFFF', 'yellow': 'FFFFFF00',
+    'gray': 'FF808080', 'grey': 'FF808080', 'orange': 'FFFFA500',
+    'purple': 'FF800080', 'pink': 'FFFFC0CB', 'brown': 'FFA52A2A'
+  }
+  
+  return colorMap[color] || 'FF000000'
+}
+
+// Función para parsear bordes CSS
+const parseBorderStyle = (borderValue) => {
+  if (!borderValue) return null
+  
+  const parts = borderValue.trim().split(/\s+/)
+  const width = parts.find(part => /^\d+px$/.test(part)) || '1px'
+  const style = parts.find(part => ['solid', 'dashed', 'dotted', 'double'].includes(part)) || 'solid'
+  const color = parts.find(part => part.startsWith('#') || /^[a-z]+$/.test(part)) || 'black'
+  
+  const excelStyle = {
+    thin: 'thin',
+    medium: 'medium',
+    thick: 'thick',
+    solid: 'thin',
+    dashed: 'dashed',
+    dotted: 'dotted',
+    double: 'double'
+  }
+  
+  return {
+    style: excelStyle[style] || 'thin',
+    color: { argb: convertColorToArgb(color) }
+  }
+}
+
+// Función mejorada para aplicar estilos CSS a celdas
+const applyCssToCell = (cell, cssStyle, isHeader = false) => {
+  if (!cssStyle) return
+  
+  const styles = {}
+  const cssRules = cssStyle.split(';')
+    .map(rule => rule.trim())
+    .filter(rule => rule.includes(':'))
+    .map(rule => {
+      const [property, value] = rule.split(':').map(s => s.trim())
+      return { property: property.toLowerCase(), value }
+    })
+  
+  cssRules.forEach(({ property, value }) => {
+    switch (property) {
+      case 'font-weight':
+        if (!styles.font) styles.font = {}
+        styles.font.bold = value === 'bold' || parseInt(value) >= 600
+        break
+        
+      case 'font-style':
+        if (!styles.font) styles.font = {}
+        styles.font.italic = value === 'italic'
+        break
+        
+      case 'text-decoration':
+        if (!styles.font) styles.font = {}
+        styles.font.underline = value.includes('underline')
+        break
+        
+      case 'font-size':
+        if (!styles.font) styles.font = {}
+        const fontSize = parseInt(value)
+        if (!isNaN(fontSize)) styles.font.size = fontSize
+        break
+        
+      case 'color':
+        if (!styles.font) styles.font = {}
+        styles.font.color = { argb: convertColorToArgb(value) }
+        break
+        
+      case 'background-color':
+        styles.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: convertColorToArgb(value) }
+        }
+        break
+        
+      case 'text-align':
+        if (!styles.alignment) styles.alignment = {}
+        styles.alignment.horizontal = value
+        break
+        
+      case 'vertical-align':
+        if (!styles.alignment) styles.alignment = {}
+        styles.alignment.vertical = value === 'middle' ? 'middle' : value
+        break
+        
+      case 'border':
+        const borderStyle = parseBorderStyle(value)
+        if (borderStyle) {
+          styles.border = {
+            top: borderStyle,
+            left: borderStyle,
+            bottom: borderStyle,
+            right: borderStyle
+          }
+        }
+        break
+        
+      case 'border-top':
+      case 'border-right':
+      case 'border-bottom':
+      case 'border-left':
+        const side = property.split('-')[1]
+        const sideStyle = parseBorderStyle(value)
+        if (sideStyle) {
+          if (!styles.border) styles.border = {}
+          styles.border[side] = sideStyle
+        }
+        break
+    }
+  })
+  
+  // Aplicar estilos acumulativamente
+  Object.keys(styles).forEach(styleType => {
+    cell[styleType] = { ...cell[styleType], ...styles[styleType] }
+  })
+}
+
+const processHTML = (buffer, worksheet) => {
+  const $ = cheerio.load(buffer.toString('utf8'));
+  let hasData = false;
+  
+  $('table').first().find('tr').each((rowIndex, row) => {
+    const rowData = [];
+    const cellStyles = [];
+    
+    $(row).find('td, th').each((colIndex, cell) => {
+      const $cell = $(cell);
+      rowData.push($cell.text().trim());
+      cellStyles.push({
+        style: $cell.attr('style'),
+        isHeader: $cell.is('th')
+      });
+    });
+    
+    if (rowData.length > 0) {
+      hasData = true;
+      const excelRow = worksheet.addRow(rowData);
+      
+      cellStyles.forEach(({ style, isHeader }, colIndex) => {
+        const cell = excelRow.getCell(colIndex + 1);
+        applyCssToCell(cell, style, isHeader);
+      });
+    }
+  });
+  
+  if (!hasData) {
+    throw new Error('No table data found in HTML');
+  }
+}
+
+const autoSizeColumns = (worksheet) => {
+  worksheet.columns.forEach((column) => {
+    let maxLength = 0;
+    column.eachCell({ includeEmpty: true }, (cell) => {
+      const columnLength = cell.value ? cell.value.toString().length : 10;
+      if (columnLength > maxLength) {
+        maxLength = columnLength;
+      }
+    })
+    column.width = maxLength < 10 ? 10 : maxLength > 50 ? 50 : maxLength + 2;
+  })
+}
+
+const applyStyleToCell = (row, style, index) => {
+
+  console.log('Applying style to row:', index, 'with style:', style);
+
+  if (index === 0) {
+    row.eachCell((cell) => {
+      if (style?.header?.font) {
+        cell.font = { 
+          ...style.header.font
+        }
+      }
+
+      if (style?.header?.fill) {
+        cell.fill = {
+          ...style.header.fill
+        }
+      }
+
+      if (style?.header?.alignment) {
+        cell.alignment = { 
+          ...style.header.alignment
+        }
+      }
+
+      if (style?.header?.border) {
+        cell.border = {
+          ...style.header.border
+        }
+      }
+    })
+  } else {
+    // Estilos para filas de datos
+    row.eachCell((cell) => {
+      if (style?.row?.font) {
+        cell.font = { 
+          ...style.row.font,
+        }
+      }
+
+      if (style?.row?.alignment) {
+        cell.alignment = { 
+          ...style.row.alignment
+        }
+      }
+
+      if (style?.row?.border) {
+        cell.border = {
+          ...style.row.border
+        }
+      }
+    });
+    
+    // Alternar colores de fila
+    if (index % 2 === 0) {
+      row.eachCell((cell) => {
+        if (style?.row?.fill) {
+          cell.fill = {
+            ...style.row.fill
+          }
+        }
+      });
+    }
+  }
+}
+
 function csvToExcel() {
   return async (req, res, next) => {
     try {
-      const filePath = './output.xlsx'
-
       if (!req.file || !req.file.buffer) {
         return res.status(400).json({ error: 'No CSV file uploaded' });
       }
 
-      const workbook = new ExcelJS.Workbook();
-      const worksheet = workbook.addWorksheet('Sheet1');
-      const fileExtension = req.file.originalname.toLowerCase();
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Sheet1')
+      const fileExtension = req.file.originalname.toLowerCase()
+      const isQuery = req.query && (Object.keys(req.query).length > 0)
 
-      const styleConfig = getStyleConfigFromQuery(req.query);
+      const styleConfig = getStyleConfigFromQuery(req.query)
 
       if (fileExtension.endsWith('.csv')) {
-          // const stream = Readable.from(req.file.buffer);
-          // await workbook.csv.read(stream, {
-          //     delimiter: '\t',     // Usa tabulación como delimitador
-          //     quote: '"',          // Comillas para valores que contienen delimitadores
-          //     escape: '"',         // Carácter de escape
-          //     headers: true        // Primera fila como headers
-          // });
 
-          const csvContent = req.file.buffer.toString('utf8');
-          // console.log('CSV content:', csvContent);
-          const lines = csvContent.split('\n').filter(line => line.trim());
+        const csvContent = req.file.buffer.toString('utf8')
+        const lines = csvContent.split('\n').filter(line => line.trim())
+        
+        lines.forEach((line, index) => {
+          const cells = line.split('\t')
+          const row = worksheet.addRow(cells)
 
-          // console.log('CSV lines:', styleConfig.header.font)
-          
-          lines.forEach((line, index) => {
-            const cells = line.split('\t');
-            const row = worksheet.addRow(cells);
-
-            // Estilos para la primera fila (headers)
-            if (index === 0) {
-              row.eachCell((cell) => {
-                cell.font = { 
-                  ...styleConfig.header.font
-                }
-                cell.fill = {
-                  ...styleConfig.header.fill
-                }
-                cell.alignment = { 
-                  ...styleConfig.header.alignment
-                }
-                cell.border = {
-                  ...styleConfig.header.border
-                }
-              })
-            } else {
-              // Estilos para filas de datos
-              row.eachCell((cell) => {
-                cell.font = { 
-                  ...styleConfig.row.font,
-                };
-                cell.alignment = { 
-                  ...styleConfig.row.alignment
-                };
-                cell.border = {
-                  ...styleConfig.row.border
-                };
-              });
-              
-              // Alternar colores de fila
-              if (index % 2 === 0) {
-                row.eachCell((cell) => {
-                  cell.fill = {
-                    ...styleConfig.row.fill
-                  };
-                });
-              }
-            }
-          });
+          if (isQuery) applyStyleToCell(row, styleConfig, index)
+        });
           
       } else if (fileExtension.endsWith('.json')) {
         const jsonString = req.file.buffer.toString('utf8');
@@ -153,22 +357,17 @@ function csvToExcel() {
             }
           })
         }
+      } else if (fileExtension.endsWith('.html')) {
+        processHTML(req.file.buffer, worksheet)
       } else {
         return res.status(400).json({ error: 'Unsupported file type' });
       }
 
-      worksheet.columns.forEach((column) => {
-        let maxLength = 0;
-        column.eachCell({ includeEmpty: true }, (cell) => {
-          const columnLength = cell.value ? cell.value.toString().length : 10;
-          if (columnLength > maxLength) {
-            maxLength = columnLength;
-          }
-        })
-        column.width = maxLength < 10 ? 10 : maxLength > 50 ? 50 : maxLength + 2;
-      })
+      autoSizeColumns(worksheet)
 
-      await workbook.xlsx.writeFile(filePath);
+      const buffer = await workbook.xlsx.writeBuffer();
+      req.excelBuffer = buffer
+      req.excelFileName = `${req.file.originalname.split('.')[0]}.xlsx`
 
       next()
     } catch (error) {

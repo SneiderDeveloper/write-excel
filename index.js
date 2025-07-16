@@ -9,9 +9,8 @@ const PORT = process.env.PORT || 3001
 
 const whitelist = [
   'http://localhost:3000',
-  'https://fixed.com.co',
-  'http://192.168.101.13:3000',
-  ''
+  'https://excel-creator-adcma9dghyecbnc6.eastus2-01.azurewebsites.net',
+  'https://h9d717s1-3001.use.devtunnels.ms'
 ]
 
 const options = {

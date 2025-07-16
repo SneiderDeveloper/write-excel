@@ -2,23 +2,34 @@ const { BlobServiceClient } = require('@azure/storage-blob')
 
 const AZURE_STORAGE_CONNECTION_STRING = "";
 const CONTAINER = 'excel'
-// const CONTAINER = 'agidev'
+// const AZURE_STORAGE_CONNECTION_STRING = ""
+// const CONTAINER = 'agione'
 
-async function uploadFile(containerClient, filePath, blobName) {
+const initializeConnection = async () => {
+  const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+  const containerClient = blobServiceClient.getContainerClient(CONTAINER)
+  await containerClient.createIfNotExists()
+
+  return { 
+    blobServiceClient,
+    containerClient
+  }
+}
+
+async function uploadFile(buffer, blobName) {
   try {
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-    const uploadBlobResponse = await blockBlobClient.uploadFile(filePath);
-    console.log(`Upload block blob ${blobName} successfully`, uploadBlobResponse.requestId);
+    const { containerClient } = await initializeConnection()
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName)
+    await blockBlobClient.uploadFile(buffer)
   } catch (error) {
-    console.error('Error uploading file to Azure Blob Storage:', error);
+    console.error('Error uploading file to Azure Blob Storage:', error)
     throw error; // Re-throw the error to be handled by the caller
   }
 }
 
 async function getDownloadUrl(fileName) {
   try {
-    const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-    const containerClient = blobServiceClient.getContainerClient(CONTAINER);
+    const { containerClient } = await initializeConnection()
     const blockBlobClient = containerClient.getBlockBlobClient(fileName);
     
     return blockBlobClient.url;
@@ -28,16 +39,9 @@ async function getDownloadUrl(fileName) {
   }
 }
 
-async function main(filePath, blobName) {
-  const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-  const containerClient = blobServiceClient.getContainerClient(CONTAINER)
-  await containerClient.createIfNotExists()
-
-  await uploadFile(containerClient, filePath, blobName);
-}
-
 module.exports = {
-  main,
+  initializeConnection,
+  uploadFile,
   getDownloadUrl
 }
    

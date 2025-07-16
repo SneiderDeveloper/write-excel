@@ -11,7 +11,7 @@ const initializeStorage = () => {
   const storage = new Storage({
     projectId: 'briefcase-a80cf',
     keyFilename: './keyfile.json'
-	});
+	})
 
 	myBucket = storage.bucket('briefcase-a80cf.appspot.com');
 

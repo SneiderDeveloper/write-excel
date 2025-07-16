@@ -1,11 +1,12 @@
 const express = require('express')
 const jsonToExcel = require('../middleware/jsonToExcel.handle')
 const csvToExcel = require('../middleware/cvsToExcel.handle')
+const fetchFile = require('../middleware/fetchFile.handle')
 const { uploadFileDirectly } = require('../utils/uploadFileDirectly')
 const { getDownloadUrlForFileDirect } = require('../utils/getDownloadUrlForFileDirect')
 const multer = require('multer')
 const path = require('path')
-const fs = require('fs')
+const { main, getDownloadUrl } = require('../utils/azureBlobStorage')
 
 const router = express.Router()
 
@@ -32,48 +33,21 @@ router.post('/json',
 	}
 )
 
-// Configuración de almacenamiento para archivos CSV
-// const storage = multer.diskStorage({
-//   destination: (req, file, cb) => {
-// 	const uploadsDir = './uploads/'
-// 	if (!fs.existsSync(uploadsDir)) {
-// 		fs.mkdirSync(uploadsDir, { recursive: true })
-// 	}
-//     cb(null, uploadsDir)
-//   },
-//   filename: (req, file, cb) => {
-//     cb(null, `uploaded${path.extname(file.originalname)}`)
-//     // cb(null, `uploaded-${Date.now()}${path.extname(file.originalname)}`)
-//   }
-// })
-
-// const upload = multer({
-//   storage,
-//   fileFilter: (req, file, cb) => {
-//     if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
-//       cb(null, true)
-//     } else {
-//       cb(new Error('Solo se permiten archivos CSV'))
-//     }
-//   }
-// })
-
 const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
   fileFilter: (req, file, cb) => {
     // Acepta archivos CSV, JSON
     const allowedTypes = ['.csv', '.json'];
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = path.extname(file.originalname).toLowerCase()
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Tipo de archivo no soportado'), false);
+      cb(new Error('Tipo de archivo no soportado'), false)
     }
   }
-});
+})
 
-// Ruta para recibir archivo CSV
 router.post('/csv', 
   upload.single('csvFile'),
   csvToExcel(),
@@ -82,6 +56,39 @@ router.post('/csv',
       return res.status(400).json({ error: 'No se recibió ningún archivo CSV' })
     }
     res.json({ message: 'Archivo CSV recibido correctamente', filePath: req.file.path })
+  }
+)
+
+
+router.post('/url', 
+  fetchFile(),
+  csvToExcel(),
+  async (req, res, next) => {
+    try {
+      console.log('Archivo recibido desde URL:', req.file)
+
+      const filePath = "../output.xlsx";
+      const blobName = `${path.basename(req.file.originalname, path.extname(req.file.originalname))}.xlsx`
+
+      try {
+        await main(filePath, blobName);
+        
+        const urlDownload = await getDownloadUrl(blobName);
+        
+        res.json({ 
+          message: 'Archivo procesado y subido exitosamente a Azure Blob Storage',
+          url: urlDownload,
+          fileName: blobName
+        });
+        
+      } catch (err) {
+        console.error('Error al subir el archivo:', err);
+        res.status(500).json({ error: 'Error al subir el archivo a Azure Blob Storage' });
+      }
+    } catch (error) {
+      console.error('Error al procesar URL:', error);
+      res.status(500).json({ error: 'Error interno del servidor al procesar la URL' });
+    }
   }
 )
 

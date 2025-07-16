@@ -2,128 +2,179 @@ const ExcelJS = require('exceljs');
 const { Readable } = require('stream');
 
 const getStyleConfigFromQuery = (query) => {
-    const styles = {}
-    Object.keys(query).forEach(key => {
-        if (query[key]) {
-            styles[key] = JSON.parse(query[key])
-        }
-    })
+  const styles = {}
 
-    return styles
+  if (!query || Object.keys(query).length === 0) {
+    return {
+      header: {
+        font: {},
+        fill: {},
+        alignment: {},
+      },
+      row: {
+        font: {},
+        fill: {},
+        alignment: {},
+        border: {}
+      }
+    }
+  }
+  Object.keys(query).forEach(key => {
+    if (query[key]) {
+      styles[key] = JSON.parse(query[key])
+    }
+  })
+
+  return styles
 }
 
 function csvToExcel() {
-    return async (req, res, next) => {
-        try {
-            const filePath = './output.xlsx';
+  return async (req, res, next) => {
+    try {
+      const filePath = './output.xlsx'
 
-            console.log('Processing CSV to Excel...', req.query);
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({ error: 'No CSV file uploaded' });
+      }
 
-            if (!req.file || !req.file.buffer) {
-                return res.status(400).json({ error: 'No CSV file uploaded' });
-            }
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Sheet1');
+      const fileExtension = req.file.originalname.toLowerCase();
 
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Sheet1');
-            const fileExtension = req.file.originalname.toLowerCase();
+      const styleConfig = getStyleConfigFromQuery(req.query);
 
-            const styleConfig = getStyleConfigFromQuery(req.query);
+      if (fileExtension.endsWith('.csv')) {
+          // const stream = Readable.from(req.file.buffer);
+          // await workbook.csv.read(stream, {
+          //     delimiter: '\t',     // Usa tabulación como delimitador
+          //     quote: '"',          // Comillas para valores que contienen delimitadores
+          //     escape: '"',         // Carácter de escape
+          //     headers: true        // Primera fila como headers
+          // });
 
-            if (fileExtension.endsWith('.csv')) {
-                // Para CSV: lee directamente con workbook.csv.read
-                // const stream = Readable.from(req.file.buffer);
-                // await workbook.csv.read(stream, {
-                //     delimiter: '\t',     // Usa tabulación como delimitador
-                //     quote: '"',          // Comillas para valores que contienen delimitadores
-                //     escape: '"',         // Carácter de escape
-                //     headers: true        // Primera fila como headers
-                // });
+          const csvContent = req.file.buffer.toString('utf8');
+          // console.log('CSV content:', csvContent);
+          const lines = csvContent.split('\n').filter(line => line.trim());
 
-                const csvContent = req.file.buffer.toString('utf8');
-                const lines = csvContent.split('\n').filter(line => line.trim());
-                
-                lines.forEach((line, index) => {
-                    const cells = line.split('\t');
-                    const row = worksheet.addRow(cells);
+          // console.log('CSV lines:', styleConfig.header.font)
+          
+          lines.forEach((line, index) => {
+            const cells = line.split('\t');
+            const row = worksheet.addRow(cells);
 
-                    // Estilos para la primera fila (headers)
-                    if (index === 0) {
-                        row.eachCell((cell) => {
-                            cell.font = { 
-                                ...styleConfig.font
-                            };
-                            cell.fill = {
-                                type: 'pattern',
-                                pattern: 'solid',
-                                fgColor: { argb: '4472C4' }
-                            };
-                            cell.alignment = { 
-                                vertical: 'middle', 
-                                horizontal: 'center' 
-                            };
-                            cell.border = {
-                                top: { style: 'thin' },
-                                left: { style: 'thin' },
-                                bottom: { style: 'thin' },
-                                right: { style: 'thin' }
-                            };
-                        });
-                    } else {
-                        // Estilos para filas de datos
-                        row.eachCell((cell) => {
-                            cell.font = { size: 10 };
-                            cell.alignment = { 
-                                vertical: 'middle',
-                                wrapText: true
-                            };
-                            cell.border = {
-                                top: { style: 'thin' },
-                                left: { style: 'thin' },
-                                bottom: { style: 'thin' },
-                                right: { style: 'thin' }
-                            };
-                        });
-                        
-                        // Alternar colores de fila
-                        if (index % 2 === 0) {
-                            row.eachCell((cell) => {
-                                cell.fill = {
-                                    type: 'pattern',
-                                    pattern: 'solid',
-                                    fgColor: { argb: 'F2F2F2' }
-                                };
-                            });
-                        }
-                    }
-                });
-                
-            } else if (fileExtension.endsWith('.json')) {
-                const jsonString = req.file.buffer.toString('utf8');
-                const jsonData = JSON.parse(jsonString);
-                
-                if (Array.isArray(jsonData) && jsonData.length > 0) {
-                    // Añade headers
-                    const headers = Object.keys(jsonData[0]);
-                    worksheet.addRow(headers);
-                    
-                    // Añade data rows
-                    jsonData.forEach(row => {
-                        const values = headers.map(header => row[header]);
-                        worksheet.addRow(values);
-                    });
+            // Estilos para la primera fila (headers)
+            if (index === 0) {
+              row.eachCell((cell) => {
+                cell.font = { 
+                  ...styleConfig.header.font
                 }
+                cell.fill = {
+                  ...styleConfig.header.fill
+                }
+                cell.alignment = { 
+                  ...styleConfig.header.alignment
+                }
+                cell.border = {
+                  ...styleConfig.header.border
+                }
+              })
             } else {
-                return res.status(400).json({ error: 'Unsupported file type' });
+              // Estilos para filas de datos
+              row.eachCell((cell) => {
+                cell.font = { 
+                  ...styleConfig.row.font,
+                };
+                cell.alignment = { 
+                  ...styleConfig.row.alignment
+                };
+                cell.border = {
+                  ...styleConfig.row.border
+                };
+              });
+              
+              // Alternar colores de fila
+              if (index % 2 === 0) {
+                row.eachCell((cell) => {
+                  cell.fill = {
+                    ...styleConfig.row.fill
+                  };
+                });
+              }
             }
+          });
+          
+      } else if (fileExtension.endsWith('.json')) {
+        const jsonString = req.file.buffer.toString('utf8');
+        const jsonData = JSON.parse(jsonString);
+        
+        if (Array.isArray(jsonData) && jsonData.length > 0) {
+          const headers = Object.keys(jsonData[0]);
+          const headerRow = worksheet.addRow(headers);
+          
+          // Añade data rows
+          headerRow.eachCell((cell) => {
+            cell.font = { 
+              ...styleConfig.header.font
+            }
+            cell.fill = {
+              ...styleConfig.header.fill
+            }
+            cell.alignment = { 
+              ...styleConfig.header.alignment 
+            }
+            cell.border = {
+              ...styleConfig.header.border
+            }
+          })
 
-            // Escribe el archivo Excel
-            await workbook.xlsx.writeFile(filePath);
-
-            next();
-        } catch (error) {
-            return res.status(500).json({ error: 'Error processing file' });
+          jsonData.forEach((rowData, index) => {
+            const values = headers.map(header => rowData[header]);
+            const row = worksheet.addRow(values);
+            
+            row.eachCell((cell) => {
+              cell.font = {
+                ...styleConfig.row.font,
+              }
+              cell.alignment = { 
+                ...styleConfig.row.alignment
+              }
+              cell.border = {
+                ...styleConfig.row.border
+              }
+            })
+            
+            // Alternar colores de fila
+            if (index % 2 === 1) {
+              row.eachCell((cell) => {
+                cell.fill = {
+                  ...styleConfig.row.fill
+                }
+              })
+            }
+          })
         }
+      } else {
+        return res.status(400).json({ error: 'Unsupported file type' });
+      }
+
+      worksheet.columns.forEach((column) => {
+        let maxLength = 0;
+        column.eachCell({ includeEmpty: true }, (cell) => {
+          const columnLength = cell.value ? cell.value.toString().length : 10;
+          if (columnLength > maxLength) {
+            maxLength = columnLength;
+          }
+        })
+        column.width = maxLength < 10 ? 10 : maxLength > 50 ? 50 : maxLength + 2;
+      })
+
+      await workbook.xlsx.writeFile(filePath);
+
+      next()
+    } catch (error) {
+      return res.status(500).json({ error: `Error processing file: ${error}` });
     }
+  }
 }
 
 module.exports = csvToExcel;

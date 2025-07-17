@@ -1,7 +1,7 @@
 const express = require('express')
 const routerApi = require('./routes/')
 const cors = require('cors')
-const { initializeStorage } = require('./utils/storageService')
+
 
 const app = express()
 
@@ -20,7 +20,6 @@ const options = {
   }
 }
 
-initializeStorage()
  
 app.use(cors(options))
 app.use(express.json())

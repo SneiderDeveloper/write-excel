@@ -81,92 +81,117 @@ const parseBorderStyle = (borderValue) => {
 
 // Función mejorada para aplicar estilos CSS a celdas
 const applyCssToCell = (cell, cssStyle, isHeader = false) => {
-  if (!cssStyle) return
+  if (!cssStyle) return;
   
-  const styles = {}
-  const cssRules = cssStyle.split(';')
+  const styles = {};
+  
+  // Limpiar y parsear el CSS
+  const cssRules = cssStyle
+    .split(';')
     .map(rule => rule.trim())
     .filter(rule => rule.includes(':'))
     .map(rule => {
-      const [property, value] = rule.split(':').map(s => s.trim())
-      return { property: property.toLowerCase(), value }
-    })
+      const colonIndex = rule.indexOf(':')
+      const property = rule.substring(0, colonIndex).trim().toLowerCase();
+      const value = rule.substring(colonIndex + 1).trim();
+      return { property, value };
+    });
   
   cssRules.forEach(({ property, value }) => {
     switch (property) {
       case 'font-weight':
-        if (!styles.font) styles.font = {}
-        styles.font.bold = value === 'bold' || parseInt(value) >= 600
-        break
+        if (!styles.font) styles.font = {};
+        styles.font.bold = value === 'bold' || parseInt(value) >= 600;
+        break;
         
       case 'font-style':
-        if (!styles.font) styles.font = {}
-        styles.font.italic = value === 'italic'
-        break
+        if (!styles.font) styles.font = {};
+        styles.font.italic = value === 'italic';
+        break;
         
       case 'text-decoration':
-        if (!styles.font) styles.font = {}
-        styles.font.underline = value.includes('underline')
-        break
+        if (!styles.font) styles.font = {};
+        styles.font.underline = value.includes('underline');
+        break;
         
       case 'font-size':
-        if (!styles.font) styles.font = {}
-        const fontSize = parseInt(value)
-        if (!isNaN(fontSize)) styles.font.size = fontSize
-        break
+        if (!styles.font) styles.font = {};
+        const fontSize = parseFloat(value);
+        if (!isNaN(fontSize)) {
+          styles.font.size = fontSize;
+        }
+        break;
+        
+      case 'font-family':
+        if (!styles.font) styles.font = {};
+        styles.font.name = value.replace(/['"]/g, '').split(',')[0].trim();
+        break;
         
       case 'color':
-        if (!styles.font) styles.font = {}
-        styles.font.color = { argb: convertColorToArgb(value) }
-        break
+        if (!styles.font) styles.font = {};
+        styles.font.color = { argb: convertColorToArgb(value) };
+        break;
         
       case 'background-color':
         styles.fill = {
           type: 'pattern',
           pattern: 'solid',
           fgColor: { argb: convertColorToArgb(value) }
-        }
-        break
+        };
+        break;
         
       case 'text-align':
-        if (!styles.alignment) styles.alignment = {}
-        styles.alignment.horizontal = value
-        break
+        if (!styles.alignment) styles.alignment = {};
+        const alignmentMap = {
+          'left': 'left',
+          'center': 'center',
+          'right': 'right',
+          'justify': 'justify'
+        };
+        styles.alignment.horizontal = alignmentMap[value] || value;
+        break;
         
       case 'vertical-align':
-        if (!styles.alignment) styles.alignment = {}
-        styles.alignment.vertical = value === 'middle' ? 'middle' : value
-        break
+        if (!styles.alignment) styles.alignment = {};
+        const verticalMap = {
+          'top': 'top',
+          'middle': 'middle',
+          'bottom': 'bottom'
+        };
+        styles.alignment.vertical = verticalMap[value] || 'middle';
+        break;
         
       case 'border':
-        const borderStyle = parseBorderStyle(value)
+        const borderStyle = parseBorderStyle(value);
         if (borderStyle) {
           styles.border = {
             top: borderStyle,
             left: borderStyle,
             bottom: borderStyle,
             right: borderStyle
-          }
+          };
         }
-        break
-        
-      case 'border-top':
-      case 'border-right':
-      case 'border-bottom':
+        break;
       case 'border-left':
-        const side = property.split('-')[1]
-        const sideStyle = parseBorderStyle(value)
+        const side = property.split('-')[1];
+        const sideStyle = parseBorderStyle(value);
         if (sideStyle) {
-          if (!styles.border) styles.border = {}
-          styles.border[side] = sideStyle
+          if (!styles.border) styles.border = {};
+          styles.border[side] = sideStyle;
         }
-        break
+        break;
+        
+      case 'padding':
+        if (!styles.alignment) styles.alignment = {};
+        styles.alignment.indent = parseInt(value) || 0;
+        break;
     }
-  })
+  });
   
-  // Aplicar estilos acumulativamente
   Object.keys(styles).forEach(styleType => {
-    cell[styleType] = { ...cell[styleType], ...styles[styleType] }
+    if (styles[styleType] && Object.keys(styles[styleType]).length > 0) {
+      cell[styleType] = { ...cell[styleType], ...styles[styleType] };
+    }
   })
 }
 
@@ -175,15 +200,27 @@ const processHTML = (buffer, worksheet) => {
   let hasData = false;
   
   $('table').first().find('tr').each((rowIndex, row) => {
-    const rowData = [];
-    const cellStyles = [];
+    const rowData = []
+    const cellStyles = []
+    const $row = $(row)
+    const rowStyle = $row.attr('style')
     
-    $(row).find('td, th').each((colIndex, cell) => {
-      const $cell = $(cell);
-      rowData.push($cell.text().trim());
+    $row.find('td, th').each((colIndex, cell) => {
+      const $cell = $(cell)
+      const cellText = $cell.text().trim()
+      const cellStyle = $cell.attr('style')
+      const isHeader = $cell.is('th')
+      
+      let combinedStyle = ''
+      if (rowStyle) combinedStyle += rowStyle
+      if (cellStyle) {
+        combinedStyle += (combinedStyle ? '; ' : '') + cellStyle
+      }
+      
+      rowData.push(cellText);
       cellStyles.push({
-        style: $cell.attr('style'),
-        isHeader: $cell.is('th')
+        style: combinedStyle || null,
+        isHeader
       });
     });
     
@@ -217,8 +254,6 @@ const autoSizeColumns = (worksheet) => {
 }
 
 const applyStyleToCell = (row, style, index) => {
-
-  console.log('Applying style to row:', index, 'with style:', style);
 
   if (index === 0) {
     row.eachCell((cell) => {

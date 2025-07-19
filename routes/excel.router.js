@@ -1,9 +1,9 @@
 const express = require('express')
 const jsonToExcel = require('../middleware/jsonToExcel.handle')
-const csvToExcel = require('../middleware/cvsToExcel.handle')
-const csvToExcelWithXlsx = require('../middleware/cvsToExcelWithXLSX.handle')
+const transformFileToExcel = require('../middleware/transformFileToExcel.handle')
 const fileFetch = require('../middleware/fileFetch.handle')
 const uploadFile = require('../middleware/uploadFile.handle')
+const bufferFile = require('../middleware/bufferFile.handler')
 const multer = require('multer')
 const path = require('path')
 const { getDownloadUrl } = require('../utils/azureBlobStorage')
@@ -36,7 +36,6 @@ const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
   fileFilter: (req, file, cb) => {
-    // Acepta archivos CSV, JSON, HTML
     const allowedTypes = ['.csv', '.json', '.html'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
@@ -45,35 +44,12 @@ const upload = multer({
       cb(new Error('Tipo de archivo no soportado'), false);
     }
   }
-});
+})
 
-// Middleware para guardar el archivo en buffer y agregar propiedades personalizadas a req.file
-const bufferFileHandler = () => {
-  return (req, res, next) => {
-    if (!req.file) return next();
-  
-    const { originalname, buffer, mimetype } = req.file;
-    const ext = path.extname(originalname).toLowerCase();
-    const blobName = Date.now() + '-' + originalname;
-    const blobPath = 'uploads/' + blobName;
-    const contentType = mimetype;
-  
-    req.file = {
-      buffer: buffer,
-      originalname,
-      filename: blobName,
-      path: blobPath,
-      mimetype: contentType || (ext === '.csv' ? 'text/csv' : 'application/json'),
-      size: buffer.length
-    };
-  
-    next();
-  }
-};
-
-router.post('/file', 
-  bufferFileHandler(),
-  csvToExcel(),
+router.post('/file',
+  upload.single('file'),
+  bufferFile(),
+  transformFileToExcel(),
   uploadFile(),
   async (req, res, next) => {
     if (!req.file) {
@@ -107,26 +83,10 @@ router.post('/file',
   }
 )
 
-router.post('/html', 
-  upload.single('csvFile'),
-  csvToExcelWithXlsx(),
-  (req, res, next) => {
-    if (!req.file) {
-      return res.status(400).json({ 
-        error: 'No se recibió ningún archivo CSV' 
-      })
-    }
-    res.json({ 
-      message: 'Archivo CSV recibido correctamente', 
-      filePath: req.file.path 
-    })
-  }
-)
-
 
 router.post('/url', 
   fileFetch(),
-  csvToExcel(),
+  transformFileToExcel(),
   uploadFile(),
   async (req, res, next) => {
     try {

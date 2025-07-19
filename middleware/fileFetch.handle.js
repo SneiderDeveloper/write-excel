@@ -15,7 +15,7 @@ function fileFetch() {
 			
 			if (!response.ok) {
 				return res.status(400).json({ 
-					error: 'No se pudo descargar el archivo desde la URL' 
+					error: 'The file could not be downloaded from the URL' 
 				})
 			}
 
@@ -23,14 +23,10 @@ function fileFetch() {
 			const urlPath = new URL(url).pathname
 			const ext = path.extname(urlPath).toLowerCase()
 
-			const allowedTypes = ['.csv', '.json']
-			if (
-				!allowedTypes.includes(ext) && 
-				!contentType?.includes('csv') && 
-				!contentType?.includes('json')
-			) {
+			const allowedTypes = ['.csv', '.json', '.html']
+			if (!allowedTypes.includes(ext)) {
 				return res.status(400).json({ 
-					error: 'Tipo de archivo no soportado. Solo CSV y JSON' 
+					error: 'Unsupported file type' 
 				})
 			}
 
@@ -63,15 +59,15 @@ function fileFetch() {
 				originalname,
 				filename: blobName,
 				path: blobPath,
-				mimetype: contentType || (ext === '.csv' ? 'text/csv' : 'application/json'),
+				mimetype: contentType,
 				size: buffer.length
 			}
 
 			next()
 		} catch (error) {
-			console.error('Error al procesar la URL:', error)
+			console.error('Error processing URL:', error)
 			return res.status(500).json({ 
-				error: 'Error al procesar la URL' 
+				error: 'Error processing URL' 
 			})
 		}
 	}

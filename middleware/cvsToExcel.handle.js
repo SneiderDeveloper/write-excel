@@ -1,5 +1,6 @@
 const ExcelJS = require('exceljs')
 const cheerio = require('cheerio')
+// const { applyCssToCell } = require('../utils/applyCssToCell')
 
 const getStyleConfigFromQuery = (query) => {
   const styles = {}
@@ -91,7 +92,7 @@ const applyCssToCell = (cell, cssStyle, isHeader = false) => {
     .map(rule => rule.trim())
     .filter(rule => rule.includes(':'))
     .map(rule => {
-      const colonIndex = rule.indexOf(':')
+      const colonIndex = rule.indexOf(':');
       const property = rule.substring(0, colonIndex).trim().toLowerCase();
       const value = rule.substring(colonIndex + 1).trim();
       return { property, value };
@@ -172,6 +173,10 @@ const applyCssToCell = (cell, cssStyle, isHeader = false) => {
           };
         }
         break;
+        
+      case 'border-top':
+      case 'border-right':
+      case 'border-bottom':
       case 'border-left':
         const side = property.split('-')[1];
         const sideStyle = parseBorderStyle(value);
@@ -188,11 +193,12 @@ const applyCssToCell = (cell, cssStyle, isHeader = false) => {
     }
   });
   
+  // Aplicar estilos a la celda
   Object.keys(styles).forEach(styleType => {
     if (styles[styleType] && Object.keys(styles[styleType]).length > 0) {
       cell[styleType] = { ...cell[styleType], ...styles[styleType] };
     }
-  })
+  });
 }
 
 const processHTML = (buffer, worksheet) => {
@@ -200,21 +206,22 @@ const processHTML = (buffer, worksheet) => {
   let hasData = false;
   
   $('table').first().find('tr').each((rowIndex, row) => {
-    const rowData = []
-    const cellStyles = []
-    const $row = $(row)
-    const rowStyle = $row.attr('style')
+    const rowData = [];
+    const cellStyles = [];
+    const $row = $(row);
+    const rowStyle = $row.attr('style'); // Obtener estilos del <tr>
     
     $row.find('td, th').each((colIndex, cell) => {
-      const $cell = $(cell)
-      const cellText = $cell.text().trim()
-      const cellStyle = $cell.attr('style')
-      const isHeader = $cell.is('th')
+      const $cell = $(cell);
+      const cellText = $cell.text().trim();
+      const cellStyle = $cell.attr('style');
+      const isHeader = $cell.is('th');
       
-      let combinedStyle = ''
-      if (rowStyle) combinedStyle += rowStyle
+      // Combinar estilos del row y de la celda
+      let combinedStyle = '';
+      if (rowStyle) combinedStyle += rowStyle;
       if (cellStyle) {
-        combinedStyle += (combinedStyle ? '; ' : '') + cellStyle
+        combinedStyle += (combinedStyle ? '; ' : '') + cellStyle;
       }
       
       rowData.push(cellText);
@@ -241,15 +248,21 @@ const processHTML = (buffer, worksheet) => {
 }
 
 const autoSizeColumns = (worksheet) => {
-  worksheet.columns.forEach((column) => {
-    let maxLength = 0;
-    column.eachCell({ includeEmpty: true }, (cell) => {
-      const columnLength = cell.value ? cell.value.toString().length : 10;
-      if (columnLength > maxLength) {
-        maxLength = columnLength;
+   const maxRows = 100 // Solo muestrear las primeras 100 filas para calcular ancho
+  
+  worksheet.columns.forEach((column, colIndex) => {
+    let maxLength = 10
+    
+    // Muestrear solo algunas filas para calcular el ancho
+    for (let rowIndex = 1; rowIndex <= Math.min(maxRows, worksheet.rowCount); rowIndex++) {
+      const cell = worksheet.getCell(rowIndex, colIndex + 1)
+      if (cell.value) {
+        const length = cell.value.toString().length
+        maxLength = Math.max(maxLength, length)
       }
-    })
-    column.width = maxLength < 10 ? 10 : maxLength > 50 ? 50 : maxLength + 2;
+    }
+    
+    column.width = Math.min(maxLength + 2, 50)
   })
 }
 
@@ -316,12 +329,90 @@ const applyStyleToCell = (row, style, index) => {
   }
 }
 
+// Aplicar estilos de forma optimizada
+const applyStylesOptimized = (worksheet, styleConfig, startRow, rowCount) => {
+  // Aplicar estilos por rangos en lugar de celda por celda
+  if (startRow === 1 && styleConfig.header) {
+    // Estilo para header
+    const headerRow = worksheet.getRow(1)
+    headerRow.eachCell((cell) => {
+      Object.assign(cell, {
+        font: styleConfig.header.font || {},
+        fill: styleConfig.header.fill || {},
+        alignment: styleConfig.header.alignment || {},
+        border: styleConfig.header.border || {}
+      })
+    })
+  }
+  
+  // Estilos para filas de datos (aplicar en lotes)
+  for (let i = Math.max(2, startRow); i < startRow + rowCount; i++) {
+    const row = worksheet.getRow(i)
+    if (styleConfig.row) {
+      row.eachCell((cell) => {
+        Object.assign(cell, {
+          font: styleConfig.row.font || {},
+          alignment: styleConfig.row.alignment || {},
+          border: styleConfig.row.border || {}
+        })
+        
+        // Alternar colores solo cuando sea necesario
+        if (styleConfig.row.fill && (i - 2) % 2 === 1) {
+          cell.fill = styleConfig.row.fill
+        }
+      })
+    }
+  }
+}
+
+const processLargeCSV = async (buffer, worksheet, styleConfig, isQuery) => {
+  const csvContent = buffer.toString('utf8')
+  const lines = csvContent.split('\n').filter(line => line.trim())
+  
+  const CHUNK_SIZE = 500 // Procesar 1000 filas a la vez
+  const firstLine = lines[0] || ''
+  const delimiter = firstLine.includes('\t') ? '\t' : ','
+  
+  for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+    const chunk = lines.slice(i, i + CHUNK_SIZE)
+    
+    // Procesar chunk
+    const rows = chunk.map(line => {
+      const cells = line.split(delimiter)
+      return cells.map(cell => cell.replace(/^"|"$/g, '').trim())
+    })
+    
+    // Añadir filas al worksheet
+    worksheet.addRows(rows)
+    
+    // Aplicar estilos solo si es necesario y de forma optimizada
+    if (isQuery && styleConfig) {
+      const startRow = i + 1
+      applyStylesOptimized(worksheet, styleConfig, startRow, rows.length)
+    }
+
+    // Log de progreso
+    if (i % 1000 === 0) {
+      console.log(`Processed ${i + CHUNK_SIZE} of ${lines.length} lines`)
+    }
+    
+    // Liberar memoria periódicamente
+    if (global.gc) {
+      global.gc()
+    }
+  }
+}
+
 function csvToExcel() {
   return async (req, res, next) => {
     try {
       if (!req.file || !req.file.buffer) {
-        return res.status(400).json({ error: 'No CSV file uploaded' });
+        return res.status(400).json({ error: 'No file uploaded' });
       }
+
+      // Verificar tamaño del archivo
+      const fileSizeMB = req.file.buffer.length / (1024 * 1024)
+      const isLargeFile = fileSizeMB > 10 // Considerar grande si es > 10MB
 
       const workbook = new ExcelJS.Workbook()
       const worksheet = workbook.addWorksheet('Sheet1')
@@ -332,15 +423,24 @@ function csvToExcel() {
 
       if (fileExtension.endsWith('.csv')) {
 
-        const csvContent = req.file.buffer.toString('utf8')
-        const lines = csvContent.split('\n').filter(line => line.trim())
-        
-        lines.forEach((line, index) => {
-          const cells = line.split('\t')
-          const row = worksheet.addRow(cells)
+        if (isLargeFile) {
+          // Usar procesamiento optimizado para archivos grandes
+          await processLargeCSV(req.file.buffer, worksheet, styleConfig, isQuery)
+        } else {
+          // Mantener el procesamiento original para archivos pequeños
+          const csvContent = req.file.buffer.toString('utf8')
+          const lines = csvContent.split('\n').filter(line => line.trim())
+          const firstLine = lines[0] || ''
+          const delimiter = firstLine.includes('\t') ? '\t' : ','
+          
+          lines.forEach((line, index) => {
+            const cells = line.split(delimiter)
+            const cleanCells = cells.map(cell => cell.replace(/^"|"$/g, '').trim())
+            const row = worksheet.addRow(cleanCells)
 
-          if (isQuery) applyStyleToCell(row, styleConfig, index)
-        });
+            if (isQuery) applyStyleToCell(row, styleConfig, index)
+          })
+        }
           
       } else if (fileExtension.endsWith('.json')) {
         const jsonString = req.file.buffer.toString('utf8');
@@ -395,14 +495,14 @@ function csvToExcel() {
       } else if (fileExtension.endsWith('.html')) {
         processHTML(req.file.buffer, worksheet)
       } else {
-        return res.status(400).json({ error: 'Unsupported file type' });
+        return res.status(400).json({ error: 'Unsupported file type' })
       }
 
       autoSizeColumns(worksheet)
 
-      const buffer = await workbook.xlsx.writeBuffer();
+      const buffer = await workbook.xlsx.writeBuffer()
+
       req.excelBuffer = buffer
-      req.excelFileName = `${req.file.originalname.split('.')[0]}.xlsx`
 
       next()
     } catch (error) {

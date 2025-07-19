@@ -37,9 +37,32 @@ function fileFetch() {
 			const arrayBuffer = await response.arrayBuffer()
 			const buffer = Buffer.from(arrayBuffer)
 
+			const originalname = path.basename(urlPath) || `file${ext}`
+			const decodedName = decodeURIComponent(originalname)
+			const blobName = `${path.basename(decodedName, path.extname(decodedName))}.xlsx`
+
+			let userId = null
+           if (req.body.url) {
+				const urlObj = new URL(req.body.url)
+				const pathSegments = urlObj.pathname.split('/').filter(segment => segment !== '')
+				
+				if (pathSegments.length >= 2) {
+					userId = pathSegments[1]
+				}
+			}
+            if (!userId) {
+                return res.status(400).json({ 
+                    error: 'User ID is required in the URL' 
+                })
+            }
+
+            const blobPath = `${userId}/${blobName}`
+
 			req.file = {
 				buffer: buffer,
-				originalname: path.basename(urlPath) || `file${ext}`,
+				originalname,
+				filename: blobName,
+				path: blobPath,
 				mimetype: contentType || (ext === '.csv' ? 'text/csv' : 'application/json'),
 				size: buffer.length
 			}

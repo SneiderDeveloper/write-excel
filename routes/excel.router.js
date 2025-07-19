@@ -18,13 +18,9 @@ router.post('/json',
 			const filePath = './output.xlsx'
 			const filePathInStorage = 'documents/output.xlsx'
 
-			await uploadFileDirectly(filePath, filePathInStorage)
-
 			try {
-				const downloadUrl = await getDownloadUrlForFileDirect(filePathInStorage);
 				res.json({ 
-          message: 'Excel file created successfully', 
-          downloadUrl 
+          message: 'Excel file created successfully',
         })
 			} catch (error) {
 				console.error('No se pudo generar la URL.');
@@ -40,19 +36,43 @@ const storage = multer.memoryStorage();
 const upload = multer({ 
   storage: storage,
   fileFilter: (req, file, cb) => {
-    // Acepta archivos CSV, JSON
+    // Acepta archivos CSV, JSON, HTML
     const allowedTypes = ['.csv', '.json', '.html'];
-    const ext = path.extname(file.originalname).toLowerCase()
+    const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Tipo de archivo no soportado'), false)
+      cb(new Error('Tipo de archivo no soportado'), false);
     }
   }
-})
+});
 
-router.post('/csv', 
-  upload.single('csvFile'),
+// Middleware para guardar el archivo en buffer y agregar propiedades personalizadas a req.file
+const bufferFileHandler = () => {
+  return (req, res, next) => {
+    if (!req.file) return next();
+  
+    const { originalname, buffer, mimetype } = req.file;
+    const ext = path.extname(originalname).toLowerCase();
+    const blobName = Date.now() + '-' + originalname;
+    const blobPath = 'uploads/' + blobName;
+    const contentType = mimetype;
+  
+    req.file = {
+      buffer: buffer,
+      originalname,
+      filename: blobName,
+      path: blobPath,
+      mimetype: contentType || (ext === '.csv' ? 'text/csv' : 'application/json'),
+      size: buffer.length
+    };
+  
+    next();
+  }
+};
+
+router.post('/file', 
+  bufferFileHandler(),
   csvToExcel(),
   uploadFile(),
   async (req, res, next) => {
@@ -63,16 +83,13 @@ router.post('/csv',
     }
 
     try {
-      const blobName = `${path.basename(req.file.originalname, path.extname(req.file.originalname))}.xlsx`
-
       try {
-        
-        const urlDownload = await getDownloadUrl(blobName)
+        const urlDownload = await getDownloadUrl(req.file.filename)
         
         res.json({ 
           message: 'File processed and uploaded successfully to Azure Blob Storage',
           url: urlDownload,
-          fileName: blobName
+          fileName: req.file.filename
         })
         
       } catch (err) {
@@ -113,16 +130,13 @@ router.post('/url',
   uploadFile(),
   async (req, res, next) => {
     try {
-      const blobName = `${path.basename(req.file.originalname, path.extname(req.file.originalname))}.xlsx`
-
       try {
-        
-        const urlDownload = await getDownloadUrl(blobName)
+        const urlDownload = await getDownloadUrl(req.file.path)
         
         res.json({ 
           message: 'File processed and uploaded successfully to Azure Blob Storage',
           url: urlDownload,
-          fileName: blobName
+          fileName: req.file.filename
         })
         
       } catch (err) {

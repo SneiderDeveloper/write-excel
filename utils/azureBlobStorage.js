@@ -1,13 +1,11 @@
 const { BlobServiceClient } = require('@azure/storage-blob')
 
-const AZURE_STORAGE_CONNECTION_STRING = "";
-const CONTAINER = 'excel'
-// const AZURE_STORAGE_CONNECTION_STRING = ""
-// const CONTAINER = 'agione'
+const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING
+const AZURE_CONTAINER_NAME = process.env.AZURE_CONTAINER_NAME
 
 const initializeConnection = async () => {
   const blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
-  const containerClient = blobServiceClient.getContainerClient(CONTAINER)
+  const containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME)
   await containerClient.createIfNotExists()
 
   return { 

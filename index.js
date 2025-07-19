@@ -1,5 +1,7 @@
+require('dotenv').config()
 const express = require('express')
 const routerApi = require('./routes/')
+const validateIp = require('./middleware/validateIp.handle')
 const cors = require('cors')
 
 
@@ -7,20 +9,18 @@ const app = express()
 
 const PORT = process.env.PORT || 3001
 
-const whitelist = [
-  'http://localhost:3000',
-  'https://excel-creator-adcma9dghyecbnc6.eastus2-01.azurewebsites.net',
-  'https://h9d717s1-3001.use.devtunnels.ms'
-]
+const HOST_WHITELIST = process.env.HOST_WHITELIST 
+  ? process.env.HOST_WHITELIST.split(',') 
+  : []
 
 const options = {
   origin: (origin, callback) => {
-    if (whitelist.includes(origin) || !origin) callback(null, true)
+    if (HOST_WHITELIST.includes(origin) || !origin) callback(null, true)
       else callback(new Error('Origin not valid'))
   }
 }
 
- 
+app.use(validateIp())
 app.use(cors(options))
 app.use(express.json())
 app.get('/', (req, res) => {

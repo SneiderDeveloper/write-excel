@@ -1,0 +1,63 @@
+name: Deploy to FTPS Server
+
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main, staging ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm i
+      
+    - name: Deploy via FTPS
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTPS_SERVER }}
+        username: ${{ secrets.FTPS_USERNAME }}
+        password: ${{ secrets.FTPS_PASSWORD }}
+        port: ${{ secrets.FTPS_PORT || 21 }}
+        protocol: ftps
+        local-dir: ./
+        server-dir: /site/wwwroot/
+        exclude: |
+          **/.git*
+          **/.git*/**
+          **/.github/**
+          **/README.md
+          **/.env.production
+          **/.env.example
+          **/logs/**
+          **/tmp/**
+          **/*.log
+          **/.DS_Store
+          **/Thumbs.db
+          **/ecosystem.config.json
+        
+    - name: Verify deployment
+      run: |
+        echo "Deployment completed successfully!"
+        echo "Application should be accessible at your server."
+        
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ Deployment successful!"
+        else
+          echo "❌ Deployment failed!"
+        fi

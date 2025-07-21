@@ -24,28 +24,15 @@ jobs:
     - name: Install dependencies
       run: npm i
       
-    - name: Deploy via FTPS
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+    - name: Deploy via SFTP
+      uses: pressidium/lftp-mirror-action@v1
       with:
-        server: ${{ secrets.FTPS_SERVER }}
-        username: ${{ secrets.FTPS_USERNAME }}
-        password: ${{ secrets.FTPS_PASSWORD }}
-        protocol: ftps
-        local-dir: ./
-        server-dir: /site/wwwroot/
-        exclude: |
-          **/.git*
-          **/.git*/**
-          **/.github/**
-          **/README.md
-          **/.env.production
-          **/.env.example
-          **/logs/**
-          **/tmp/**
-          **/*.log
-          **/.DS_Store
-          **/Thumbs.db
-          **/ecosystem.config.json
+        host: ${{ secrets.FTPS_SERVER }}
+        user: ${{ secrets.FTPS_USERNAME }}
+        pass: ${{ secrets.FTPS_PASSWORD }}
+        localDir: "./"
+        remoteDir: "/site/wwwroot/"
+        options: "--verbose --delete --exclude-glob=.git* --exclude-glob=.github/ --exclude-glob=README.md --exclude-glob=.env.production --exclude-glob=.env.example --exclude-glob=logs/ --exclude-glob=tmp/ --exclude-glob=*.log --exclude-glob=.DS_Store --exclude-glob=Thumbs.db --exclude-glob=ecosystem.config.json"
         
     - name: Verify deployment
       run: |

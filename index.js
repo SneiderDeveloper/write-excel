@@ -10,7 +10,7 @@ const app = express()
 const PORT = process.env.PORT || 3001
 
 const HOST_WHITELIST = process.env.HOST_WHITELIST 
-  ? process.env.HOST_WHITELIST.split(',') 
+  ? process.env.HOST_WHITELIST.split(',').map(host => host.trim())
   : []
 
 const options = {
@@ -20,8 +20,8 @@ const options = {
   }
 }
 
-app.use(validateIp())
 app.use(cors(options))
+app.use(validateIp())
 app.use(express.json())
 app.get('/', (req, res) => {
   res.send('Excel API')

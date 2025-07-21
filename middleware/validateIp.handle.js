@@ -2,7 +2,7 @@ function validateIp(){
   return (req, res, next) => {
 
     const IP_WHITELIST = process.env.IP_WHITELIST 
-      ? process.env.IP_WHITELIST.split(',') 
+      ? process.env.IP_WHITELIST.split(',').map(ip => ip.trim())
       : []
 
     // If no IPs are configured, allow all

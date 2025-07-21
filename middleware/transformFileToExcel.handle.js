@@ -1,31 +1,32 @@
 const ExcelJS = require('exceljs')
 const { autoSizeColumns, processHTML, processLargeCSV } = require('../utils')
 
-const getStyleConfigFromQuery = (query) => {
-  const styles = {}
-
-  if (!query || Object.keys(query).length === 0) {
-    return {
-      header: {
-        font: {},
-        fill: {},
-        alignment: {},
-      },
-      row: {
-        font: {},
-        fill: {},
-        alignment: {},
-        border: {}
-      }
+const getStyleConfigFromQuery = (query = {}) => {
+  const defaultConfig = {
+    header: {
+      font: {},
+      fill: {},
+      alignment: {},
+      border: {}
+    },
+    row: {
+      font: {},
+      fill: {},
+      alignment: {},
+      border: {}
     }
   }
-  Object.keys(query).forEach(key => {
-    if (query[key]) {
-      styles[key] = JSON.parse(query[key])
-    }
-  })
 
-  return styles
+  if (!Object.keys(query).length) return defaultConfig
+
+  return Object.entries(query).reduce((config, [key, value]) => {
+    try {
+      config[key] = JSON.parse(value)
+    } catch {
+      config[key] = {}
+    }
+    return config
+  }, { ...defaultConfig })
 }
 
 function transformFileToExcel() {
@@ -55,53 +56,37 @@ function transformFileToExcel() {
         )  
       } else if (fileExtension.endsWith('.json')) {
         const jsonString = req.file.buffer.toString('utf8');
-        const jsonData = JSON.parse(jsonString);
-        
+        let jsonData;
+        try {
+          jsonData = JSON.parse(jsonString);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid JSON file' });
+        }
+
         if (Array.isArray(jsonData) && jsonData.length > 0) {
           const headers = Object.keys(jsonData[0]);
-          const headerRow = worksheet.addRow(headers);
-          
-          // Añade data rows
-          headerRow.eachCell((cell) => {
-            cell.font = { 
-              ...styleConfig.header.font
-            }
-            cell.fill = {
-              ...styleConfig.header.fill
-            }
-            cell.alignment = { 
-              ...styleConfig.header.alignment 
-            }
-            cell.border = {
-              ...styleConfig.header.border
-            }
-          })
+          worksheet.addRow(headers).eachCell((cell) => {
+            Object.assign(cell, {
+              font: { ...styleConfig.header.font },
+              fill: { ...styleConfig.header.fill },
+              alignment: { ...styleConfig.header.alignment },
+              border: { ...styleConfig.header.border }
+            });
+          });
 
-          jsonData.forEach((rowData, index) => {
-            const values = headers.map(header => rowData[header]);
-            const row = worksheet.addRow(values);
-            
+          jsonData.forEach((rowData, idx) => {
+            const row = worksheet.addRow(headers.map(h => rowData[h]));
             row.eachCell((cell) => {
-              cell.font = {
-                ...styleConfig.row.font,
-              }
-              cell.alignment = { 
-                ...styleConfig.row.alignment
-              }
-              cell.border = {
-                ...styleConfig.row.border
-              }
-            })
-            
-            // Alternar colores de fila
-            if (index % 2 === 1) {
-              row.eachCell((cell) => {
-                cell.fill = {
-                  ...styleConfig.row.fill
-                }
-              })
-            }
-          })
+              Object.assign(cell, {
+          font: { ...styleConfig.row.font },
+          alignment: { ...styleConfig.row.alignment },
+          border: { ...styleConfig.row.border },
+          fill: (idx % 2 === 1) ? { ...styleConfig.row.fill } : cell.fill
+              });
+            });
+          });
+        } else {
+          worksheet.addRow(['No data']);
         }
       } else if (fileExtension.endsWith('.html')) {
         processHTML(req.file.buffer, worksheet)

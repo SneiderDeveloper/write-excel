@@ -31,7 +31,7 @@ jobs:
         package: .
         publish-profile: ${{
           github.ref == 'refs/heads/main' && secrets.AZUREAPPSERVICE_PUBLISHPROFILE_DC044CCF282D4274B74ECD6D309C7730 ||
-          github.ref == 'refs/heads/staging' && secrets.AZUREAPPSERVICE_PUBLISHPROFILE_CA8DCC5878C944188F13136D96B1FA8E ||
+          github.ref == 'refs/heads/staging' && secrets.AZURE_DEPLOY_TOKEN_DEV ||
           github.ref == 'refs/heads/dev' && secrets.AZURE_DEPLOY_TOKEN_DEV ||
           github.ref == 'refs/heads/localhost' && secrets.AZURE_DEPLOY_TOKEN_LOCAL}}
         

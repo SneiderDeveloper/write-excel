@@ -52,12 +52,6 @@ router.post('/file',
   transformFileToExcel(),
   uploadFile(),
   async (req, res, next) => {
-    if (!req.file) {
-      return res.status(400).json({ 
-        error: 'No se recibió ningún archivo con extensión .csv, .json o .html'  
-      })
-    }
-
     try {
       try {
         const urlDownload = await getDownloadUrl(req.file.filename)
@@ -69,15 +63,15 @@ router.post('/file',
         })
         
       } catch (err) {
-        console.error('Error al subir el archivo:', err)
+        console.error('Error uploading file to Azure Blob Storage:', err)
         res.status(500).json({ 
-          error: 'Error al subir el archivo a Azure Blob Storage' 
+          error: 'Error uploading file to Azure Blob Storage' 
         })
       }
     } catch (error) {
-      console.error('Error al procesar URL:', error)
+      console.error('Error processing URL:', error)
       res.status(500).json({ 
-        error: 'Error interno del servidor al procesar la URL' 
+        error: 'Error processing URL' 
       })
     }
   }
@@ -100,15 +94,15 @@ router.post('/url',
         })
         
       } catch (err) {
-        console.error('Error al subir el archivo:', err)
+        console.error('Error uploading file to Azure Blob Storage:', err)
         res.status(500).json({ 
-          error: 'Error al subir el archivo a Azure Blob Storage' 
+          error: 'Error uploading file to Azure Blob Storage' 
         })
       }
     } catch (error) {
-      console.error('Error al procesar URL:', error)
+      console.error('Error processing URL:', error)
       res.status(500).json({ 
-        error: 'Error interno del servidor al procesar la URL' 
+        error: 'Error processing URL' 
       })
     }
   }
